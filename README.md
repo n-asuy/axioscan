@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="banner.png" alt="axioscan" width="700">
+</p>
+
 # axioscan
 
 Local IOC scanner for the **axios / plain-crypto-js** npm supply-chain incident (March 2026).
