@@ -52,6 +52,52 @@ cargo build --release
 > **Why not `cargo install`?**
 > This is a supply-chain attack scanner. Installing it through a package manager would add the very kind of trust dependency you are trying to audit. Clone the repo, read the source — it's pure Rust with **zero external dependencies** — and build it yourself.
 
+### Try it with a simulated infection
+
+> ⚠️ This creates harmless dummy files that mimic the structure of the real attack. No actual malicious code is executed.
+
+The script below builds a fake `node_modules` tree containing the three IOCs that axioscan looks for:
+1. An `axios` package that declares `plain-crypto-js` as a dependency
+2. An installed `plain-crypto-js@4.2.1` (a known malicious version)
+3. A JavaScript file with loader-style indicators (`execSync`, `writeFileSync`, `renameSync`)
+
+```bash
+# 1. Create a fake infected repo
+mkdir -p /tmp/infected/node_modules/axios
+echo '{"name":"axios","version":"1.14.1","dependencies":{"plain-crypto-js":"^4.2.1"}}' \
+  > /tmp/infected/node_modules/axios/package.json
+
+mkdir -p /tmp/infected/node_modules/plain-crypto-js
+echo '{"name":"plain-crypto-js","version":"4.2.1"}' \
+  > /tmp/infected/node_modules/plain-crypto-js/package.json
+
+cat > /tmp/infected/node_modules/plain-crypto-js/index.js << 'EOF'
+const { execSync } = require('child_process');
+const os = require('os');
+const fs = require('fs');
+fs.writeFileSync(os.tmpdir() + '/svc', data);
+fs.renameSync(os.tmpdir() + '/svc', os.tmpdir() + '/loader');
+EOF
+
+# 2. Run the scan
+cargo run -- /tmp/infected
+
+# 3. Clean up
+rm -rf /tmp/infected
+```
+
+Expected output (exit code 2):
+
+```
+Status: compromised
+Scanned: /tmp/infected
+Findings:
+  - [compromised] Installed axios declares plain-crypto-js as a dependency. (node_modules/axios/package.json)
+  - [compromised] Installed plain-crypto-js version is 4.2.1, a known malicious version. (node_modules/plain-crypto-js/package.json)
+  - [compromised] plain-crypto-js package contains multiple loader indicators: execSync, writeFileSync, renameSync. (plain-crypto-js)
+  - [at-risk] Installed axios version is 1.14.1, the version named in the advisory. (node_modules/axios/package.json)
+```
+
 ## Exit codes
 
 | Code | Meaning |
